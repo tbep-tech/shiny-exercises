@@ -1,46 +1,54 @@
-# template to app below
-# show sidebar vs columns
-# leaflet vs leafletproxy
+# goal: create an app to select a time series by station/parameter, create a plot and show on map
 
-# install.packages('tbeptools', repos = c('https://fawda123.r-universe.dev', 'https://cloud.r-project.org'))
+# setup
 library(tbeptools)
 library(dplyr)
 library(tidyr)
-library(plotly)
 library(leaflet)
+library(plotly)
+library(ggplot2)
 
+# prep data
 datprep <- epcdata %>%
-  select(epchc_station, SampleTime, lat = Latitude, lon = Longitude, tn, chla, sd_m) %>%
-  pivot_longer(c('tn', 'chla', 'sd_m'), names_to = 'var', values_to = 'val') %>%
-  mutate(
-    var = factor(var, levels = c('tn', 'chla', 'sd_m'),
-                 labels = c('Total Nitrogen (mg/L)', 'Chl-a (ug/L)', 'Secchi depth (m)'))
-  )
-stas <- unique(datprep$epchc_station)
-vars <- unique(datprep$var)
+  select(
+    epchc_station,
+    SampleTime,
+    lat = Latitude,
+    lon = Longitude,
+    `Total Nitrogen (mg/L)` = tn,
+    `Chlorophyll-a (ug/L)` = chla,
+    `Secchi depth (m)` = sd_m
+  ) %>%
+  pivot_longer(names_to = 'var', values_to = 'val', `Total Nitrogen (mg/L)`:`Secchi depth (m)`)
 
+# station selection
+stasel <- unique(datprep$epchc_station)
+
+# parameter selection
+varsel <- unique(datprep$var)
+
+# map locations
 maplocs <- datprep %>%
-  select(epchc_station, lat, lon) %>%
+  select(epchc_station, lon, lat) %>%
   unique()
 
+# base map
 bsmap <- leaflet(maplocs) %>%
   addProviderTiles(providers$CartoDB.Positron) %>%
-  leaflet::addLabelOnlyMarkers(
+  addLabelOnlyMarkers(
     lat = ~lat,
     lng = ~lon,
     label = ~as.character(epchc_station),
     labelOptions = labelOptions(noHide = T, textOnly = T)
   )
 
+#  create vector of lat/lon
 ui <- fluidPage(
 
-  titlePanel('Tampa Bay water quality example'),
-
-  column(12,
-    column(6, selectInput("stasel", "Select station:", choices = stas)),
-    column(6, selectInput("varsel", "Select variable:", choices = vars))
-    ),
-  column(12,
+  wellPanel(
+    h2("Plot water quality data"),
+    selectInput("stasel", "Select station", choices = stasel),
+    selectInput("varsel", "Select parameter", choices = varsel),
     plotlyOutput('tsplo'),
     leafletOutput('map1')
   )
@@ -49,6 +57,7 @@ ui <- fluidPage(
 
 server <- function(input, output, session) {
 
+  # setup plot data as reactive
   data <- reactive({
 
     # inputs
@@ -56,24 +65,23 @@ server <- function(input, output, session) {
     varsel <- input$varsel
 
     out <- datprep %>%
-      filter(epchc_station %in% stasel) %>%
-      filter(var %in% varsel)
+      filter(epchc_station == stasel) %>%
+      filter(var == varsel)
 
     return(out)
 
   })
 
+  # setup time series plot for output
   output$tsplo <- renderPlotly({
 
     # inputs
-    varsel <- input$varsel
     data <- data()
+    varsel <- input$varsel
 
     p <- ggplot(data, aes(x = SampleTime, y = val)) +
       geom_line() +
-      theme_minimal() +
       labs(
-        x = NULL,
         y = varsel
       )
 
@@ -83,26 +91,26 @@ server <- function(input, output, session) {
 
   })
 
-  output$map1 <- renderLeaflet(bsmap)
-
-  observeEvent(input$stasel,{
+  # setup map for output
+  output$map1 <- renderLeaflet({
 
     # inputs
     stasel <- input$stasel
 
-    staselmap <- maplocs %>%
-      filter(epchc_station %in% stasel)
+    # filter lat/lon by station
+    maplocsel <- maplocs %>%
+      filter(epchc_station == stasel)
 
-    leafletProxy('map1') %>%
-      removeMarker(layerId = 'selected') %>%
+    m <- bsmap %>%
       addCircles(
-        data = staselmap,
-        lat = ~lat,
+        data = maplocsel,
         lng = ~lon,
+        lat = ~lat,
         color = 'red',
-        weight = 20,
-        layerId = 'selected'
+        weight = 20
       )
+
+    return(m)
 
   })
 
