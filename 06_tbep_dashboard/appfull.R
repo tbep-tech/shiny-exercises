@@ -1,119 +1,107 @@
 # goal: create an app to select a time series by station/parameter, create a plot and show on map
 
-# setup
-library(tbeptools)
+# global.R ----
+
+# * load libraries ----
 library(dplyr)
-library(tidyr)
+library(ggplot2)
 library(leaflet)
 library(plotly)
-library(ggplot2)
+if (!"tbeptools" %in% rownames(installed.packages()))
+  install.packages(
+    "tbeptools",
+    repos = c(
+      tbeptech = 'https://tbep-tech.r-universe.dev',
+      CRAN     = 'https://cloud.r-project.org') )
+library(tbeptools)
+library(tidyr)
 
-# prep data
-datprep <- epcdata %>%
+# * prep data ----
+d <- epcdata |>
   select(
-    epchc_station,
+    station                 = epchc_station,
     SampleTime,
-    lat = Latitude,
-    lon = Longitude,
+    lat                     = Latitude,
+    lon                     = Longitude,
     `Total Nitrogen (mg/L)` = tn,
-    `Chlorophyll-a (ug/L)` = chla,
-    `Secchi depth (m)` = sd_m
-  ) %>%
-  pivot_longer(names_to = 'var', values_to = 'val', `Total Nitrogen (mg/L)`:`Secchi depth (m)`)
+    `Chlorophyll-a (ug/L)`  = chla,
+    `Secchi depth (m)`      = sd_m) |>
+  pivot_longer(
+    names_to  = 'variable',
+    values_to = 'value',
+    `Total Nitrogen (mg/L)`:`Secchi depth (m)`)
 
-# station selection
-stasel <- unique(datprep$epchc_station)
-
-# parameter selection
-varsel <- unique(datprep$var)
-
-# map locations
-maplocs <- datprep %>%
-  select(epchc_station, lon, lat) %>%
+# * data for select ----
+stations  <- unique(d$station)
+variables <- unique(d$variable)
+locations <- d |>
+  select(station, lon, lat) |>
   unique()
 
-# base map
-bsmap <- leaflet(maplocs) %>%
-  addProviderTiles(providers$CartoDB.Positron) %>%
+# * base map ----
+basemap <- leaflet(locations) |>
+  addProviderTiles(providers$CartoDB.Positron) |>
   addLabelOnlyMarkers(
-    lat = ~lat,
-    lng = ~lon,
-    label = ~as.character(epchc_station),
-    labelOptions = labelOptions(noHide = T, textOnly = T)
-  )
+    lat          = ~lat,
+    lng          = ~lon,
+    label        = ~as.character(station),
+    labelOptions = labelOptions(
+      noHide   = T,
+      textOnly = T) )
 
-#  create vector of lat/lon
+#  ui.R ----
 ui <- fluidPage(
 
   wellPanel(
     h2("Plot water quality data"),
-    selectInput("stasel", "Select station", choices = stasel),
-    selectInput("varsel", "Select parameter", choices = varsel),
-    plotlyOutput('tsplo'),
-    leafletOutput('map1')
-  )
+    selectInput("sel_sta", "Station",  choices = stations),
+    selectInput("sel_var", "Variable", choices = variables),
+    plotlyOutput('tsplot'),
+    leafletOutput('map') )
 
 )
 
+#  server.R ----
 server <- function(input, output, session) {
 
-  # setup plot data as reactive
-  data <- reactive({
+  # * get_data(): reactive to inputs ----
+  get_data <- reactive({
 
-    # inputs
-    stasel <- input$stasel
-    varsel <- input$varsel
-
-    out <- datprep %>%
-      filter(epchc_station == stasel) %>%
-      filter(var == varsel)
-
-    return(out)
-
+    d |>
+      filter(
+        station  == input$sel_sta,
+        variable == input$sel_var)
   })
 
-  # setup time series plot for output
-  output$tsplo <- renderPlotly({
+  # * tsplot: time series plot ----
+  output$tsplot <- renderPlotly({
 
-    # inputs
-    data <- data()
-    varsel <- input$varsel
-
-    p <- ggplot(data, aes(x = SampleTime, y = val)) +
+    g <- ggplot(
+      get_data(),
+      aes(x = SampleTime, y = value) ) +
       geom_line() +
-      labs(
-        y = varsel
-      )
+      labs(y = input$sel_var)
 
-    p <- ggplotly(p)
-
-    return(p)
-
+    ggplotly(g)
   })
 
-  # setup map for output
-  output$map1 <- renderLeaflet({
+  # * map ----
+  output$map <- renderLeaflet({
 
-    # inputs
-    stasel <- input$stasel
+    # filter locations by station
+    locs_sta <- locations |>
+      filter(
+        station == input$sel_sta)
 
-    # filter lat/lon by station
-    maplocsel <- maplocs %>%
-      filter(epchc_station == stasel)
-
-    m <- bsmap %>%
+    basemap |>
       addCircles(
-        data = maplocsel,
-        lng = ~lon,
-        lat = ~lat,
-        color = 'red',
-        weight = 20
-      )
-
-    return(m)
-
+        data   = locs_sta,
+        lng    = ~lon,
+        lat    = ~lat,
+        color  = 'red',
+        weight = 20)
   })
-
 }
 
+# run ----
 shinyApp(ui, server)
