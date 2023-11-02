@@ -27,14 +27,14 @@ d <- epcdata |>
     `Chlorophyll-a (ug/L)`  = chla,
     `Secchi depth (m)`      = sd_m) |>
   pivot_longer(
-    names_to  = 'variable',
+    names_to  = 'indicator',
     values_to = 'value',
     `Total Nitrogen (mg/L)`:`Secchi depth (m)`)
 
 # * data for select ----
-stations  <- unique(d$station)
-variables <- unique(d$variable)
-locations <- d |>
+stations   <- unique(d$station)
+indicators <- unique(d$indicator)
+locations  <- d |>
   select(station, lon, lat) |>
   unique()
 
@@ -53,9 +53,9 @@ basemap <- leaflet(locations) |>
 ui <- fluidPage(
 
   wellPanel(
-    h2("Plot water quality data"),
-    selectInput("sel_sta", "Station",  choices = stations),
-    selectInput("sel_var", "Variable", choices = variables),
+    h2("Water Quality"),
+    selectInput("sel_sta", "Station",   choices = stations),
+    selectInput("sel_ind", "Indicator", choices = indicators),
     plotlyOutput('tsplot'),
     leafletOutput('map') )
 
@@ -69,8 +69,8 @@ server <- function(input, output, session) {
 
     d |>
       filter(
-        station  == input$sel_sta,
-        variable == input$sel_var)
+        station   == input$sel_sta,
+        indicator == input$sel_ind)
   })
 
   # * tsplot: time series plot ----
@@ -78,9 +78,11 @@ server <- function(input, output, session) {
 
     g <- ggplot(
       get_data(),
-      aes(x = SampleTime, y = value) ) +
+      aes(
+        x = SampleTime,
+        y = value) ) +
       geom_line() +
-      labs(y = input$sel_var)
+      labs(y = input$sel_ind)
 
     ggplotly(g)
   })
