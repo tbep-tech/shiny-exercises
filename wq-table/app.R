@@ -5,15 +5,10 @@
 
 # * load libraries ----
 library(dplyr)
+library(DT)
 library(ggplot2)
 library(leaflet)
 library(plotly)
-if (!"tbeptools" %in% rownames(installed.packages()))
-  install.packages(
-    "tbeptools",
-    repos = c(
-      tbeptech = "https://tbep-tech.r-universe.dev",
-      CRAN     = "https://cloud.r-project.org") )
 library(tbeptools)
 library(tidyr)
 
@@ -46,7 +41,8 @@ ui <- fluidPage(
     selectInput("sel_sta", "Station",   choices = stations),
     selectInput("sel_ind", "Indicator", choices = indicators),
     plotlyOutput("tsplot"),
-    leafletOutput("map") )
+    leafletOutput("map"),
+    DTOutput('tbl') )
 )
 
 #  server.R ----
@@ -98,6 +94,11 @@ server <- function(input, output, session) {
         lat    = ~lat,
         color  = "red",
         weight = 20)
+  })
+
+  output$tbl = renderDT({
+    get_data() |>
+      datatable()
   })
 }
 
