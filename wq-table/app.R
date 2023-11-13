@@ -96,6 +96,7 @@ server <- function(input, output, session) {
         weight = 20)
   })
 
+  # * table ----
   output$tbl = renderDT({
     get_data() |>
       datatable()
